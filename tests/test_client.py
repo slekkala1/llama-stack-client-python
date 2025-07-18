@@ -21,11 +21,11 @@ import pytest
 from respx import MockRouter
 from pydantic import ValidationError
 
-from llama_stack_client import LlamaStackClient, AsyncLlamaStackClient, APIResponseValidationError
-from llama_stack_client._types import Omit
-from llama_stack_client._models import BaseModel, FinalRequestOptions
-from llama_stack_client._exceptions import APIStatusError, APITimeoutError, APIResponseValidationError
-from llama_stack_client._base_client import (
+from llama_stack_cli import LlamaStackCli, AsyncLlamaStackCli, APIResponseValidationError
+from llama_stack_cli._types import Omit
+from llama_stack_cli._models import BaseModel, FinalRequestOptions
+from llama_stack_cli._exceptions import APIStatusError, APITimeoutError, LlamaStackCliError, APIResponseValidationError
+from llama_stack_cli._base_client import (
     DEFAULT_TIMEOUT,
     HTTPX_DEFAULT_TIMEOUT,
     BaseClient,
@@ -37,6 +37,7 @@ from llama_stack_client._base_client import (
 from .utils import update_env
 
 base_url = os.environ.get("TEST_API_BASE_URL", "http://127.0.0.1:4010")
+api_key = "My API Key"
 
 
 def _get_params(client: BaseClient[Any, Any]) -> dict[str, str]:
@@ -49,7 +50,7 @@ def _low_retry_timeout(*_args: Any, **_kwargs: Any) -> float:
     return 0.1
 
 
-def _get_open_connections(client: LlamaStackClient | AsyncLlamaStackClient) -> int:
+def _get_open_connections(client: LlamaStackCli | AsyncLlamaStackCli) -> int:
     transport = client._client._transport
     assert isinstance(transport, httpx.HTTPTransport) or isinstance(transport, httpx.AsyncHTTPTransport)
 
@@ -57,8 +58,8 @@ def _get_open_connections(client: LlamaStackClient | AsyncLlamaStackClient) -> i
     return len(pool._requests)
 
 
-class TestLlamaStackClient:
-    client = LlamaStackClient(base_url=base_url, _strict_response_validation=True)
+class TestLlamaStackCli:
+    client = LlamaStackCli(base_url=base_url, api_key=api_key, _strict_response_validation=True)
 
     @pytest.mark.respx(base_url=base_url)
     def test_raw_response(self, respx_mock: MockRouter) -> None:
@@ -84,6 +85,10 @@ class TestLlamaStackClient:
         copied = self.client.copy()
         assert id(copied) != id(self.client)
 
+        copied = self.client.copy(api_key="another My API Key")
+        assert copied.api_key == "another My API Key"
+        assert self.client.api_key == "My API Key"
+
     def test_copy_default_options(self) -> None:
         # options that have a default are overridden correctly
         copied = self.client.copy(max_retries=7)
@@ -101,7 +106,9 @@ class TestLlamaStackClient:
         assert isinstance(self.client.timeout, httpx.Timeout)
 
     def test_copy_default_headers(self) -> None:
-        client = LlamaStackClient(base_url=base_url, _strict_response_validation=True, default_headers={"X-Foo": "bar"})
+        client = LlamaStackCli(
+            base_url=base_url, api_key=api_key, _strict_response_validation=True, default_headers={"X-Foo": "bar"}
+        )
         assert client.default_headers["X-Foo"] == "bar"
 
         # does not override the already given value when not specified
@@ -133,7 +140,9 @@ class TestLlamaStackClient:
             client.copy(set_default_headers={}, default_headers={"X-Foo": "Bar"})
 
     def test_copy_default_query(self) -> None:
-        client = LlamaStackClient(base_url=base_url, _strict_response_validation=True, default_query={"foo": "bar"})
+        client = LlamaStackCli(
+            base_url=base_url, api_key=api_key, _strict_response_validation=True, default_query={"foo": "bar"}
+        )
         assert _get_params(client)["foo"] == "bar"
 
         # does not override the already given value when not specified
@@ -223,10 +232,10 @@ class TestLlamaStackClient:
                         # to_raw_response_wrapper leaks through the @functools.wraps() decorator.
                         #
                         # removing the decorator fixes the leak for reasons we don't understand.
-                        "llama_stack_client/_legacy_response.py",
-                        "llama_stack_client/_response.py",
+                        "llama_stack_cli/_legacy_response.py",
+                        "llama_stack_cli/_response.py",
                         # pydantic.BaseModel.model_dump || pydantic.BaseModel.dict leak memory for some reason.
-                        "llama_stack_client/_compat.py",
+                        "llama_stack_cli/_compat.py",
                         # Standard library leaks we don't care about.
                         "/logging/__init__.py",
                     ]
@@ -257,7 +266,9 @@ class TestLlamaStackClient:
         assert timeout == httpx.Timeout(100.0)
 
     def test_client_timeout_option(self) -> None:
-        client = LlamaStackClient(base_url=base_url, _strict_response_validation=True, timeout=httpx.Timeout(0))
+        client = LlamaStackCli(
+            base_url=base_url, api_key=api_key, _strict_response_validation=True, timeout=httpx.Timeout(0)
+        )
 
         request = client._build_request(FinalRequestOptions(method="get", url="/foo"))
         timeout = httpx.Timeout(**request.extensions["timeout"])  # type: ignore
@@ -266,7 +277,9 @@ class TestLlamaStackClient:
     def test_http_client_timeout_option(self) -> None:
         # custom timeout given to the httpx client should be used
         with httpx.Client(timeout=None) as http_client:
-            client = LlamaStackClient(base_url=base_url, _strict_response_validation=True, http_client=http_client)
+            client = LlamaStackCli(
+                base_url=base_url, api_key=api_key, _strict_response_validation=True, http_client=http_client
+            )
 
             request = client._build_request(FinalRequestOptions(method="get", url="/foo"))
             timeout = httpx.Timeout(**request.extensions["timeout"])  # type: ignore
@@ -274,7 +287,9 @@ class TestLlamaStackClient:
 
         # no timeout given to the httpx client should not use the httpx default
         with httpx.Client() as http_client:
-            client = LlamaStackClient(base_url=base_url, _strict_response_validation=True, http_client=http_client)
+            client = LlamaStackCli(
+                base_url=base_url, api_key=api_key, _strict_response_validation=True, http_client=http_client
+            )
 
             request = client._build_request(FinalRequestOptions(method="get", url="/foo"))
             timeout = httpx.Timeout(**request.extensions["timeout"])  # type: ignore
@@ -282,7 +297,9 @@ class TestLlamaStackClient:
 
         # explicitly passing the default timeout currently results in it being ignored
         with httpx.Client(timeout=HTTPX_DEFAULT_TIMEOUT) as http_client:
-            client = LlamaStackClient(base_url=base_url, _strict_response_validation=True, http_client=http_client)
+            client = LlamaStackCli(
+                base_url=base_url, api_key=api_key, _strict_response_validation=True, http_client=http_client
+            )
 
             request = client._build_request(FinalRequestOptions(method="get", url="/foo"))
             timeout = httpx.Timeout(**request.extensions["timeout"])  # type: ignore
@@ -291,18 +308,24 @@ class TestLlamaStackClient:
     async def test_invalid_http_client(self) -> None:
         with pytest.raises(TypeError, match="Invalid `http_client` arg"):
             async with httpx.AsyncClient() as http_client:
-                LlamaStackClient(
-                    base_url=base_url, _strict_response_validation=True, http_client=cast(Any, http_client)
+                LlamaStackCli(
+                    base_url=base_url,
+                    api_key=api_key,
+                    _strict_response_validation=True,
+                    http_client=cast(Any, http_client),
                 )
 
     def test_default_headers_option(self) -> None:
-        client = LlamaStackClient(base_url=base_url, _strict_response_validation=True, default_headers={"X-Foo": "bar"})
+        client = LlamaStackCli(
+            base_url=base_url, api_key=api_key, _strict_response_validation=True, default_headers={"X-Foo": "bar"}
+        )
         request = client._build_request(FinalRequestOptions(method="get", url="/foo"))
         assert request.headers.get("x-foo") == "bar"
         assert request.headers.get("x-stainless-lang") == "python"
 
-        client2 = LlamaStackClient(
+        client2 = LlamaStackCli(
             base_url=base_url,
+            api_key=api_key,
             _strict_response_validation=True,
             default_headers={
                 "X-Foo": "stainless",
@@ -313,9 +336,19 @@ class TestLlamaStackClient:
         assert request.headers.get("x-foo") == "stainless"
         assert request.headers.get("x-stainless-lang") == "my-overriding-header"
 
+    def test_validate_headers(self) -> None:
+        client = LlamaStackCli(base_url=base_url, api_key=api_key, _strict_response_validation=True)
+        request = client._build_request(FinalRequestOptions(method="get", url="/foo"))
+        assert request.headers.get("api_key") == api_key
+
+        with pytest.raises(LlamaStackCliError):
+            with update_env(**{"PETSTORE_API_KEY": Omit()}):
+                client2 = LlamaStackCli(base_url=base_url, api_key=None, _strict_response_validation=True)
+            _ = client2
+
     def test_default_query_option(self) -> None:
-        client = LlamaStackClient(
-            base_url=base_url, _strict_response_validation=True, default_query={"query_param": "bar"}
+        client = LlamaStackCli(
+            base_url=base_url, api_key=api_key, _strict_response_validation=True, default_query={"query_param": "bar"}
         )
         request = client._build_request(FinalRequestOptions(method="get", url="/foo"))
         url = httpx.URL(request.url)
@@ -428,10 +461,10 @@ class TestLlamaStackClient:
         params = dict(request.url.params)
         assert params == {"foo": "2"}
 
-    def test_multipart_repeating_array(self, client: LlamaStackClient) -> None:
+    def test_multipart_repeating_array(self, client: LlamaStackCli) -> None:
         request = client._build_request(
             FinalRequestOptions.construct(
-                method="get",
+                method="post",
                 url="/foo",
                 headers={"Content-Type": "multipart/form-data; boundary=6b7ba517decee4a450543ea6ae821c82"},
                 json_data={"array": ["foo", "bar"]},
@@ -515,7 +548,9 @@ class TestLlamaStackClient:
         assert response.foo == 2
 
     def test_base_url_setter(self) -> None:
-        client = LlamaStackClient(base_url="https://example.com/from_init", _strict_response_validation=True)
+        client = LlamaStackCli(
+            base_url="https://example.com/from_init", api_key=api_key, _strict_response_validation=True
+        )
         assert client.base_url == "https://example.com/from_init/"
 
         client.base_url = "https://example.com/from_setter"  # type: ignore[assignment]
@@ -523,23 +558,26 @@ class TestLlamaStackClient:
         assert client.base_url == "https://example.com/from_setter/"
 
     def test_base_url_env(self) -> None:
-        with update_env(LLAMA_STACK_BASE_URL="http://localhost:5000/from/env"):
-            client = LlamaStackClient(_strict_response_validation=True)
+        with update_env(LLAMA_STACK_CLI_BASE_URL="http://localhost:5000/from/env"):
+            client = LlamaStackCli(api_key=api_key, _strict_response_validation=True)
             assert client.base_url == "http://localhost:5000/from/env/"
 
     @pytest.mark.parametrize(
         "client",
         [
-            LlamaStackClient(base_url="http://localhost:5000/custom/path/", _strict_response_validation=True),
-            LlamaStackClient(
+            LlamaStackCli(
+                base_url="http://localhost:5000/custom/path/", api_key=api_key, _strict_response_validation=True
+            ),
+            LlamaStackCli(
                 base_url="http://localhost:5000/custom/path/",
+                api_key=api_key,
                 _strict_response_validation=True,
                 http_client=httpx.Client(),
             ),
         ],
         ids=["standard", "custom http client"],
     )
-    def test_base_url_trailing_slash(self, client: LlamaStackClient) -> None:
+    def test_base_url_trailing_slash(self, client: LlamaStackCli) -> None:
         request = client._build_request(
             FinalRequestOptions(
                 method="post",
@@ -552,16 +590,19 @@ class TestLlamaStackClient:
     @pytest.mark.parametrize(
         "client",
         [
-            LlamaStackClient(base_url="http://localhost:5000/custom/path/", _strict_response_validation=True),
-            LlamaStackClient(
+            LlamaStackCli(
+                base_url="http://localhost:5000/custom/path/", api_key=api_key, _strict_response_validation=True
+            ),
+            LlamaStackCli(
                 base_url="http://localhost:5000/custom/path/",
+                api_key=api_key,
                 _strict_response_validation=True,
                 http_client=httpx.Client(),
             ),
         ],
         ids=["standard", "custom http client"],
     )
-    def test_base_url_no_trailing_slash(self, client: LlamaStackClient) -> None:
+    def test_base_url_no_trailing_slash(self, client: LlamaStackCli) -> None:
         request = client._build_request(
             FinalRequestOptions(
                 method="post",
@@ -574,16 +615,19 @@ class TestLlamaStackClient:
     @pytest.mark.parametrize(
         "client",
         [
-            LlamaStackClient(base_url="http://localhost:5000/custom/path/", _strict_response_validation=True),
-            LlamaStackClient(
+            LlamaStackCli(
+                base_url="http://localhost:5000/custom/path/", api_key=api_key, _strict_response_validation=True
+            ),
+            LlamaStackCli(
                 base_url="http://localhost:5000/custom/path/",
+                api_key=api_key,
                 _strict_response_validation=True,
                 http_client=httpx.Client(),
             ),
         ],
         ids=["standard", "custom http client"],
     )
-    def test_absolute_request_url(self, client: LlamaStackClient) -> None:
+    def test_absolute_request_url(self, client: LlamaStackCli) -> None:
         request = client._build_request(
             FinalRequestOptions(
                 method="post",
@@ -594,7 +638,7 @@ class TestLlamaStackClient:
         assert request.url == "https://myapi.com/foo"
 
     def test_copied_client_does_not_close_http(self) -> None:
-        client = LlamaStackClient(base_url=base_url, _strict_response_validation=True)
+        client = LlamaStackCli(base_url=base_url, api_key=api_key, _strict_response_validation=True)
         assert not client.is_closed()
 
         copied = client.copy()
@@ -605,7 +649,7 @@ class TestLlamaStackClient:
         assert not client.is_closed()
 
     def test_client_context_manager(self) -> None:
-        client = LlamaStackClient(base_url=base_url, _strict_response_validation=True)
+        client = LlamaStackCli(base_url=base_url, api_key=api_key, _strict_response_validation=True)
         with client as c2:
             assert c2 is client
             assert not c2.is_closed()
@@ -626,7 +670,9 @@ class TestLlamaStackClient:
 
     def test_client_max_retries_validation(self) -> None:
         with pytest.raises(TypeError, match=r"max_retries cannot be None"):
-            LlamaStackClient(base_url=base_url, _strict_response_validation=True, max_retries=cast(Any, None))
+            LlamaStackCli(
+                base_url=base_url, api_key=api_key, _strict_response_validation=True, max_retries=cast(Any, None)
+            )
 
     @pytest.mark.respx(base_url=base_url)
     def test_received_text_for_expected_json(self, respx_mock: MockRouter) -> None:
@@ -635,12 +681,12 @@ class TestLlamaStackClient:
 
         respx_mock.get("/foo").mock(return_value=httpx.Response(200, text="my-custom-format"))
 
-        strict_client = LlamaStackClient(base_url=base_url, _strict_response_validation=True)
+        strict_client = LlamaStackCli(base_url=base_url, api_key=api_key, _strict_response_validation=True)
 
         with pytest.raises(APIResponseValidationError):
             strict_client.get("/foo", cast_to=Model)
 
-        client = LlamaStackClient(base_url=base_url, _strict_response_validation=False)
+        client = LlamaStackCli(base_url=base_url, api_key=api_key, _strict_response_validation=False)
 
         response = client.get("/foo", cast_to=Model)
         assert isinstance(response, str)  # type: ignore[unreachable]
@@ -668,55 +714,39 @@ class TestLlamaStackClient:
     )
     @mock.patch("time.time", mock.MagicMock(return_value=1696004797))
     def test_parse_retry_after_header(self, remaining_retries: int, retry_after: str, timeout: float) -> None:
-        client = LlamaStackClient(base_url=base_url, _strict_response_validation=True)
+        client = LlamaStackCli(base_url=base_url, api_key=api_key, _strict_response_validation=True)
 
         headers = httpx.Headers({"retry-after": retry_after})
         options = FinalRequestOptions(method="get", url="/foo", max_retries=3)
         calculated = client._calculate_retry_timeout(remaining_retries, options, headers)
         assert calculated == pytest.approx(timeout, 0.5 * 0.875)  # pyright: ignore[reportUnknownMemberType]
 
-    @mock.patch("llama_stack_client._base_client.BaseClient._calculate_retry_timeout", _low_retry_timeout)
+    @mock.patch("llama_stack_cli._base_client.BaseClient._calculate_retry_timeout", _low_retry_timeout)
     @pytest.mark.respx(base_url=base_url)
-    def test_retrying_timeout_errors_doesnt_leak(self, respx_mock: MockRouter, client: LlamaStackClient) -> None:
-        respx_mock.post("/v1/inference/chat-completion").mock(side_effect=httpx.TimeoutException("Test timeout error"))
+    def test_retrying_timeout_errors_doesnt_leak(self, respx_mock: MockRouter, client: LlamaStackCli) -> None:
+        respx_mock.get("/store/inventory").mock(side_effect=httpx.TimeoutException("Test timeout error"))
 
         with pytest.raises(APITimeoutError):
-            client.inference.with_streaming_response.chat_completion(
-                messages=[
-                    {
-                        "content": "string",
-                        "role": "user",
-                    }
-                ],
-                model_id="model_id",
-            ).__enter__()
+            client.store.with_streaming_response.list_inventory().__enter__()
 
         assert _get_open_connections(self.client) == 0
 
-    @mock.patch("llama_stack_client._base_client.BaseClient._calculate_retry_timeout", _low_retry_timeout)
+    @mock.patch("llama_stack_cli._base_client.BaseClient._calculate_retry_timeout", _low_retry_timeout)
     @pytest.mark.respx(base_url=base_url)
-    def test_retrying_status_errors_doesnt_leak(self, respx_mock: MockRouter, client: LlamaStackClient) -> None:
-        respx_mock.post("/v1/inference/chat-completion").mock(return_value=httpx.Response(500))
+    def test_retrying_status_errors_doesnt_leak(self, respx_mock: MockRouter, client: LlamaStackCli) -> None:
+        respx_mock.get("/store/inventory").mock(return_value=httpx.Response(500))
 
         with pytest.raises(APIStatusError):
-            client.inference.with_streaming_response.chat_completion(
-                messages=[
-                    {
-                        "content": "string",
-                        "role": "user",
-                    }
-                ],
-                model_id="model_id",
-            ).__enter__()
+            client.store.with_streaming_response.list_inventory().__enter__()
         assert _get_open_connections(self.client) == 0
 
     @pytest.mark.parametrize("failures_before_success", [0, 2, 4])
-    @mock.patch("llama_stack_client._base_client.BaseClient._calculate_retry_timeout", _low_retry_timeout)
+    @mock.patch("llama_stack_cli._base_client.BaseClient._calculate_retry_timeout", _low_retry_timeout)
     @pytest.mark.respx(base_url=base_url)
     @pytest.mark.parametrize("failure_mode", ["status", "exception"])
     def test_retries_taken(
         self,
-        client: LlamaStackClient,
+        client: LlamaStackCli,
         failures_before_success: int,
         failure_mode: Literal["status", "exception"],
         respx_mock: MockRouter,
@@ -734,26 +764,18 @@ class TestLlamaStackClient:
                 return httpx.Response(500)
             return httpx.Response(200)
 
-        respx_mock.post("/v1/inference/chat-completion").mock(side_effect=retry_handler)
+        respx_mock.get("/store/inventory").mock(side_effect=retry_handler)
 
-        response = client.inference.with_raw_response.chat_completion(
-            messages=[
-                {
-                    "content": "string",
-                    "role": "user",
-                }
-            ],
-            model_id="model_id",
-        )
+        response = client.store.with_raw_response.list_inventory()
 
         assert response.retries_taken == failures_before_success
         assert int(response.http_request.headers.get("x-stainless-retry-count")) == failures_before_success
 
     @pytest.mark.parametrize("failures_before_success", [0, 2, 4])
-    @mock.patch("llama_stack_client._base_client.BaseClient._calculate_retry_timeout", _low_retry_timeout)
+    @mock.patch("llama_stack_cli._base_client.BaseClient._calculate_retry_timeout", _low_retry_timeout)
     @pytest.mark.respx(base_url=base_url)
     def test_omit_retry_count_header(
-        self, client: LlamaStackClient, failures_before_success: int, respx_mock: MockRouter
+        self, client: LlamaStackCli, failures_before_success: int, respx_mock: MockRouter
     ) -> None:
         client = client.with_options(max_retries=4)
 
@@ -766,26 +788,17 @@ class TestLlamaStackClient:
                 return httpx.Response(500)
             return httpx.Response(200)
 
-        respx_mock.post("/v1/inference/chat-completion").mock(side_effect=retry_handler)
+        respx_mock.get("/store/inventory").mock(side_effect=retry_handler)
 
-        response = client.inference.with_raw_response.chat_completion(
-            messages=[
-                {
-                    "content": "string",
-                    "role": "user",
-                }
-            ],
-            model_id="model_id",
-            extra_headers={"x-stainless-retry-count": Omit()},
-        )
+        response = client.store.with_raw_response.list_inventory(extra_headers={"x-stainless-retry-count": Omit()})
 
         assert len(response.http_request.headers.get_list("x-stainless-retry-count")) == 0
 
     @pytest.mark.parametrize("failures_before_success", [0, 2, 4])
-    @mock.patch("llama_stack_client._base_client.BaseClient._calculate_retry_timeout", _low_retry_timeout)
+    @mock.patch("llama_stack_cli._base_client.BaseClient._calculate_retry_timeout", _low_retry_timeout)
     @pytest.mark.respx(base_url=base_url)
     def test_overwrite_retry_count_header(
-        self, client: LlamaStackClient, failures_before_success: int, respx_mock: MockRouter
+        self, client: LlamaStackCli, failures_before_success: int, respx_mock: MockRouter
     ) -> None:
         client = client.with_options(max_retries=4)
 
@@ -798,18 +811,9 @@ class TestLlamaStackClient:
                 return httpx.Response(500)
             return httpx.Response(200)
 
-        respx_mock.post("/v1/inference/chat-completion").mock(side_effect=retry_handler)
+        respx_mock.get("/store/inventory").mock(side_effect=retry_handler)
 
-        response = client.inference.with_raw_response.chat_completion(
-            messages=[
-                {
-                    "content": "string",
-                    "role": "user",
-                }
-            ],
-            model_id="model_id",
-            extra_headers={"x-stainless-retry-count": "42"},
-        )
+        response = client.store.with_raw_response.list_inventory(extra_headers={"x-stainless-retry-count": "42"})
 
         assert response.http_request.headers.get("x-stainless-retry-count") == "42"
 
@@ -863,8 +867,8 @@ class TestLlamaStackClient:
         assert exc_info.value.response.headers["Location"] == f"{base_url}/redirected"
 
 
-class TestAsyncLlamaStackClient:
-    client = AsyncLlamaStackClient(base_url=base_url, _strict_response_validation=True)
+class TestAsyncLlamaStackCli:
+    client = AsyncLlamaStackCli(base_url=base_url, api_key=api_key, _strict_response_validation=True)
 
     @pytest.mark.respx(base_url=base_url)
     @pytest.mark.asyncio
@@ -892,6 +896,10 @@ class TestAsyncLlamaStackClient:
         copied = self.client.copy()
         assert id(copied) != id(self.client)
 
+        copied = self.client.copy(api_key="another My API Key")
+        assert copied.api_key == "another My API Key"
+        assert self.client.api_key == "My API Key"
+
     def test_copy_default_options(self) -> None:
         # options that have a default are overridden correctly
         copied = self.client.copy(max_retries=7)
@@ -909,8 +917,8 @@ class TestAsyncLlamaStackClient:
         assert isinstance(self.client.timeout, httpx.Timeout)
 
     def test_copy_default_headers(self) -> None:
-        client = AsyncLlamaStackClient(
-            base_url=base_url, _strict_response_validation=True, default_headers={"X-Foo": "bar"}
+        client = AsyncLlamaStackCli(
+            base_url=base_url, api_key=api_key, _strict_response_validation=True, default_headers={"X-Foo": "bar"}
         )
         assert client.default_headers["X-Foo"] == "bar"
 
@@ -943,8 +951,8 @@ class TestAsyncLlamaStackClient:
             client.copy(set_default_headers={}, default_headers={"X-Foo": "Bar"})
 
     def test_copy_default_query(self) -> None:
-        client = AsyncLlamaStackClient(
-            base_url=base_url, _strict_response_validation=True, default_query={"foo": "bar"}
+        client = AsyncLlamaStackCli(
+            base_url=base_url, api_key=api_key, _strict_response_validation=True, default_query={"foo": "bar"}
         )
         assert _get_params(client)["foo"] == "bar"
 
@@ -1035,10 +1043,10 @@ class TestAsyncLlamaStackClient:
                         # to_raw_response_wrapper leaks through the @functools.wraps() decorator.
                         #
                         # removing the decorator fixes the leak for reasons we don't understand.
-                        "llama_stack_client/_legacy_response.py",
-                        "llama_stack_client/_response.py",
+                        "llama_stack_cli/_legacy_response.py",
+                        "llama_stack_cli/_response.py",
                         # pydantic.BaseModel.model_dump || pydantic.BaseModel.dict leak memory for some reason.
-                        "llama_stack_client/_compat.py",
+                        "llama_stack_cli/_compat.py",
                         # Standard library leaks we don't care about.
                         "/logging/__init__.py",
                     ]
@@ -1069,7 +1077,9 @@ class TestAsyncLlamaStackClient:
         assert timeout == httpx.Timeout(100.0)
 
     async def test_client_timeout_option(self) -> None:
-        client = AsyncLlamaStackClient(base_url=base_url, _strict_response_validation=True, timeout=httpx.Timeout(0))
+        client = AsyncLlamaStackCli(
+            base_url=base_url, api_key=api_key, _strict_response_validation=True, timeout=httpx.Timeout(0)
+        )
 
         request = client._build_request(FinalRequestOptions(method="get", url="/foo"))
         timeout = httpx.Timeout(**request.extensions["timeout"])  # type: ignore
@@ -1078,7 +1088,9 @@ class TestAsyncLlamaStackClient:
     async def test_http_client_timeout_option(self) -> None:
         # custom timeout given to the httpx client should be used
         async with httpx.AsyncClient(timeout=None) as http_client:
-            client = AsyncLlamaStackClient(base_url=base_url, _strict_response_validation=True, http_client=http_client)
+            client = AsyncLlamaStackCli(
+                base_url=base_url, api_key=api_key, _strict_response_validation=True, http_client=http_client
+            )
 
             request = client._build_request(FinalRequestOptions(method="get", url="/foo"))
             timeout = httpx.Timeout(**request.extensions["timeout"])  # type: ignore
@@ -1086,7 +1098,9 @@ class TestAsyncLlamaStackClient:
 
         # no timeout given to the httpx client should not use the httpx default
         async with httpx.AsyncClient() as http_client:
-            client = AsyncLlamaStackClient(base_url=base_url, _strict_response_validation=True, http_client=http_client)
+            client = AsyncLlamaStackCli(
+                base_url=base_url, api_key=api_key, _strict_response_validation=True, http_client=http_client
+            )
 
             request = client._build_request(FinalRequestOptions(method="get", url="/foo"))
             timeout = httpx.Timeout(**request.extensions["timeout"])  # type: ignore
@@ -1094,7 +1108,9 @@ class TestAsyncLlamaStackClient:
 
         # explicitly passing the default timeout currently results in it being ignored
         async with httpx.AsyncClient(timeout=HTTPX_DEFAULT_TIMEOUT) as http_client:
-            client = AsyncLlamaStackClient(base_url=base_url, _strict_response_validation=True, http_client=http_client)
+            client = AsyncLlamaStackCli(
+                base_url=base_url, api_key=api_key, _strict_response_validation=True, http_client=http_client
+            )
 
             request = client._build_request(FinalRequestOptions(method="get", url="/foo"))
             timeout = httpx.Timeout(**request.extensions["timeout"])  # type: ignore
@@ -1103,20 +1119,24 @@ class TestAsyncLlamaStackClient:
     def test_invalid_http_client(self) -> None:
         with pytest.raises(TypeError, match="Invalid `http_client` arg"):
             with httpx.Client() as http_client:
-                AsyncLlamaStackClient(
-                    base_url=base_url, _strict_response_validation=True, http_client=cast(Any, http_client)
+                AsyncLlamaStackCli(
+                    base_url=base_url,
+                    api_key=api_key,
+                    _strict_response_validation=True,
+                    http_client=cast(Any, http_client),
                 )
 
     def test_default_headers_option(self) -> None:
-        client = AsyncLlamaStackClient(
-            base_url=base_url, _strict_response_validation=True, default_headers={"X-Foo": "bar"}
+        client = AsyncLlamaStackCli(
+            base_url=base_url, api_key=api_key, _strict_response_validation=True, default_headers={"X-Foo": "bar"}
         )
         request = client._build_request(FinalRequestOptions(method="get", url="/foo"))
         assert request.headers.get("x-foo") == "bar"
         assert request.headers.get("x-stainless-lang") == "python"
 
-        client2 = AsyncLlamaStackClient(
+        client2 = AsyncLlamaStackCli(
             base_url=base_url,
+            api_key=api_key,
             _strict_response_validation=True,
             default_headers={
                 "X-Foo": "stainless",
@@ -1127,9 +1147,19 @@ class TestAsyncLlamaStackClient:
         assert request.headers.get("x-foo") == "stainless"
         assert request.headers.get("x-stainless-lang") == "my-overriding-header"
 
+    def test_validate_headers(self) -> None:
+        client = AsyncLlamaStackCli(base_url=base_url, api_key=api_key, _strict_response_validation=True)
+        request = client._build_request(FinalRequestOptions(method="get", url="/foo"))
+        assert request.headers.get("api_key") == api_key
+
+        with pytest.raises(LlamaStackCliError):
+            with update_env(**{"PETSTORE_API_KEY": Omit()}):
+                client2 = AsyncLlamaStackCli(base_url=base_url, api_key=None, _strict_response_validation=True)
+            _ = client2
+
     def test_default_query_option(self) -> None:
-        client = AsyncLlamaStackClient(
-            base_url=base_url, _strict_response_validation=True, default_query={"query_param": "bar"}
+        client = AsyncLlamaStackCli(
+            base_url=base_url, api_key=api_key, _strict_response_validation=True, default_query={"query_param": "bar"}
         )
         request = client._build_request(FinalRequestOptions(method="get", url="/foo"))
         url = httpx.URL(request.url)
@@ -1242,10 +1272,10 @@ class TestAsyncLlamaStackClient:
         params = dict(request.url.params)
         assert params == {"foo": "2"}
 
-    def test_multipart_repeating_array(self, async_client: AsyncLlamaStackClient) -> None:
+    def test_multipart_repeating_array(self, async_client: AsyncLlamaStackCli) -> None:
         request = async_client._build_request(
             FinalRequestOptions.construct(
-                method="get",
+                method="post",
                 url="/foo",
                 headers={"Content-Type": "multipart/form-data; boundary=6b7ba517decee4a450543ea6ae821c82"},
                 json_data={"array": ["foo", "bar"]},
@@ -1329,7 +1359,9 @@ class TestAsyncLlamaStackClient:
         assert response.foo == 2
 
     def test_base_url_setter(self) -> None:
-        client = AsyncLlamaStackClient(base_url="https://example.com/from_init", _strict_response_validation=True)
+        client = AsyncLlamaStackCli(
+            base_url="https://example.com/from_init", api_key=api_key, _strict_response_validation=True
+        )
         assert client.base_url == "https://example.com/from_init/"
 
         client.base_url = "https://example.com/from_setter"  # type: ignore[assignment]
@@ -1337,23 +1369,26 @@ class TestAsyncLlamaStackClient:
         assert client.base_url == "https://example.com/from_setter/"
 
     def test_base_url_env(self) -> None:
-        with update_env(LLAMA_STACK_BASE_URL="http://localhost:5000/from/env"):
-            client = AsyncLlamaStackClient(_strict_response_validation=True)
+        with update_env(LLAMA_STACK_CLI_BASE_URL="http://localhost:5000/from/env"):
+            client = AsyncLlamaStackCli(api_key=api_key, _strict_response_validation=True)
             assert client.base_url == "http://localhost:5000/from/env/"
 
     @pytest.mark.parametrize(
         "client",
         [
-            AsyncLlamaStackClient(base_url="http://localhost:5000/custom/path/", _strict_response_validation=True),
-            AsyncLlamaStackClient(
+            AsyncLlamaStackCli(
+                base_url="http://localhost:5000/custom/path/", api_key=api_key, _strict_response_validation=True
+            ),
+            AsyncLlamaStackCli(
                 base_url="http://localhost:5000/custom/path/",
+                api_key=api_key,
                 _strict_response_validation=True,
                 http_client=httpx.AsyncClient(),
             ),
         ],
         ids=["standard", "custom http client"],
     )
-    def test_base_url_trailing_slash(self, client: AsyncLlamaStackClient) -> None:
+    def test_base_url_trailing_slash(self, client: AsyncLlamaStackCli) -> None:
         request = client._build_request(
             FinalRequestOptions(
                 method="post",
@@ -1366,16 +1401,19 @@ class TestAsyncLlamaStackClient:
     @pytest.mark.parametrize(
         "client",
         [
-            AsyncLlamaStackClient(base_url="http://localhost:5000/custom/path/", _strict_response_validation=True),
-            AsyncLlamaStackClient(
+            AsyncLlamaStackCli(
+                base_url="http://localhost:5000/custom/path/", api_key=api_key, _strict_response_validation=True
+            ),
+            AsyncLlamaStackCli(
                 base_url="http://localhost:5000/custom/path/",
+                api_key=api_key,
                 _strict_response_validation=True,
                 http_client=httpx.AsyncClient(),
             ),
         ],
         ids=["standard", "custom http client"],
     )
-    def test_base_url_no_trailing_slash(self, client: AsyncLlamaStackClient) -> None:
+    def test_base_url_no_trailing_slash(self, client: AsyncLlamaStackCli) -> None:
         request = client._build_request(
             FinalRequestOptions(
                 method="post",
@@ -1388,16 +1426,19 @@ class TestAsyncLlamaStackClient:
     @pytest.mark.parametrize(
         "client",
         [
-            AsyncLlamaStackClient(base_url="http://localhost:5000/custom/path/", _strict_response_validation=True),
-            AsyncLlamaStackClient(
+            AsyncLlamaStackCli(
+                base_url="http://localhost:5000/custom/path/", api_key=api_key, _strict_response_validation=True
+            ),
+            AsyncLlamaStackCli(
                 base_url="http://localhost:5000/custom/path/",
+                api_key=api_key,
                 _strict_response_validation=True,
                 http_client=httpx.AsyncClient(),
             ),
         ],
         ids=["standard", "custom http client"],
     )
-    def test_absolute_request_url(self, client: AsyncLlamaStackClient) -> None:
+    def test_absolute_request_url(self, client: AsyncLlamaStackCli) -> None:
         request = client._build_request(
             FinalRequestOptions(
                 method="post",
@@ -1408,7 +1449,7 @@ class TestAsyncLlamaStackClient:
         assert request.url == "https://myapi.com/foo"
 
     async def test_copied_client_does_not_close_http(self) -> None:
-        client = AsyncLlamaStackClient(base_url=base_url, _strict_response_validation=True)
+        client = AsyncLlamaStackCli(base_url=base_url, api_key=api_key, _strict_response_validation=True)
         assert not client.is_closed()
 
         copied = client.copy()
@@ -1420,7 +1461,7 @@ class TestAsyncLlamaStackClient:
         assert not client.is_closed()
 
     async def test_client_context_manager(self) -> None:
-        client = AsyncLlamaStackClient(base_url=base_url, _strict_response_validation=True)
+        client = AsyncLlamaStackCli(base_url=base_url, api_key=api_key, _strict_response_validation=True)
         async with client as c2:
             assert c2 is client
             assert not c2.is_closed()
@@ -1442,7 +1483,9 @@ class TestAsyncLlamaStackClient:
 
     async def test_client_max_retries_validation(self) -> None:
         with pytest.raises(TypeError, match=r"max_retries cannot be None"):
-            AsyncLlamaStackClient(base_url=base_url, _strict_response_validation=True, max_retries=cast(Any, None))
+            AsyncLlamaStackCli(
+                base_url=base_url, api_key=api_key, _strict_response_validation=True, max_retries=cast(Any, None)
+            )
 
     @pytest.mark.respx(base_url=base_url)
     @pytest.mark.asyncio
@@ -1452,12 +1495,12 @@ class TestAsyncLlamaStackClient:
 
         respx_mock.get("/foo").mock(return_value=httpx.Response(200, text="my-custom-format"))
 
-        strict_client = AsyncLlamaStackClient(base_url=base_url, _strict_response_validation=True)
+        strict_client = AsyncLlamaStackCli(base_url=base_url, api_key=api_key, _strict_response_validation=True)
 
         with pytest.raises(APIResponseValidationError):
             await strict_client.get("/foo", cast_to=Model)
 
-        client = AsyncLlamaStackClient(base_url=base_url, _strict_response_validation=False)
+        client = AsyncLlamaStackCli(base_url=base_url, api_key=api_key, _strict_response_validation=False)
 
         response = await client.get("/foo", cast_to=Model)
         assert isinstance(response, str)  # type: ignore[unreachable]
@@ -1486,60 +1529,44 @@ class TestAsyncLlamaStackClient:
     @mock.patch("time.time", mock.MagicMock(return_value=1696004797))
     @pytest.mark.asyncio
     async def test_parse_retry_after_header(self, remaining_retries: int, retry_after: str, timeout: float) -> None:
-        client = AsyncLlamaStackClient(base_url=base_url, _strict_response_validation=True)
+        client = AsyncLlamaStackCli(base_url=base_url, api_key=api_key, _strict_response_validation=True)
 
         headers = httpx.Headers({"retry-after": retry_after})
         options = FinalRequestOptions(method="get", url="/foo", max_retries=3)
         calculated = client._calculate_retry_timeout(remaining_retries, options, headers)
         assert calculated == pytest.approx(timeout, 0.5 * 0.875)  # pyright: ignore[reportUnknownMemberType]
 
-    @mock.patch("llama_stack_client._base_client.BaseClient._calculate_retry_timeout", _low_retry_timeout)
+    @mock.patch("llama_stack_cli._base_client.BaseClient._calculate_retry_timeout", _low_retry_timeout)
     @pytest.mark.respx(base_url=base_url)
     async def test_retrying_timeout_errors_doesnt_leak(
-        self, respx_mock: MockRouter, async_client: AsyncLlamaStackClient
+        self, respx_mock: MockRouter, async_client: AsyncLlamaStackCli
     ) -> None:
-        respx_mock.post("/v1/inference/chat-completion").mock(side_effect=httpx.TimeoutException("Test timeout error"))
+        respx_mock.get("/store/inventory").mock(side_effect=httpx.TimeoutException("Test timeout error"))
 
         with pytest.raises(APITimeoutError):
-            await async_client.inference.with_streaming_response.chat_completion(
-                messages=[
-                    {
-                        "content": "string",
-                        "role": "user",
-                    }
-                ],
-                model_id="model_id",
-            ).__aenter__()
+            await async_client.store.with_streaming_response.list_inventory().__aenter__()
 
         assert _get_open_connections(self.client) == 0
 
-    @mock.patch("llama_stack_client._base_client.BaseClient._calculate_retry_timeout", _low_retry_timeout)
+    @mock.patch("llama_stack_cli._base_client.BaseClient._calculate_retry_timeout", _low_retry_timeout)
     @pytest.mark.respx(base_url=base_url)
     async def test_retrying_status_errors_doesnt_leak(
-        self, respx_mock: MockRouter, async_client: AsyncLlamaStackClient
+        self, respx_mock: MockRouter, async_client: AsyncLlamaStackCli
     ) -> None:
-        respx_mock.post("/v1/inference/chat-completion").mock(return_value=httpx.Response(500))
+        respx_mock.get("/store/inventory").mock(return_value=httpx.Response(500))
 
         with pytest.raises(APIStatusError):
-            await async_client.inference.with_streaming_response.chat_completion(
-                messages=[
-                    {
-                        "content": "string",
-                        "role": "user",
-                    }
-                ],
-                model_id="model_id",
-            ).__aenter__()
+            await async_client.store.with_streaming_response.list_inventory().__aenter__()
         assert _get_open_connections(self.client) == 0
 
     @pytest.mark.parametrize("failures_before_success", [0, 2, 4])
-    @mock.patch("llama_stack_client._base_client.BaseClient._calculate_retry_timeout", _low_retry_timeout)
+    @mock.patch("llama_stack_cli._base_client.BaseClient._calculate_retry_timeout", _low_retry_timeout)
     @pytest.mark.respx(base_url=base_url)
     @pytest.mark.asyncio
     @pytest.mark.parametrize("failure_mode", ["status", "exception"])
     async def test_retries_taken(
         self,
-        async_client: AsyncLlamaStackClient,
+        async_client: AsyncLlamaStackCli,
         failures_before_success: int,
         failure_mode: Literal["status", "exception"],
         respx_mock: MockRouter,
@@ -1557,27 +1584,19 @@ class TestAsyncLlamaStackClient:
                 return httpx.Response(500)
             return httpx.Response(200)
 
-        respx_mock.post("/v1/inference/chat-completion").mock(side_effect=retry_handler)
+        respx_mock.get("/store/inventory").mock(side_effect=retry_handler)
 
-        response = await client.inference.with_raw_response.chat_completion(
-            messages=[
-                {
-                    "content": "string",
-                    "role": "user",
-                }
-            ],
-            model_id="model_id",
-        )
+        response = await client.store.with_raw_response.list_inventory()
 
         assert response.retries_taken == failures_before_success
         assert int(response.http_request.headers.get("x-stainless-retry-count")) == failures_before_success
 
     @pytest.mark.parametrize("failures_before_success", [0, 2, 4])
-    @mock.patch("llama_stack_client._base_client.BaseClient._calculate_retry_timeout", _low_retry_timeout)
+    @mock.patch("llama_stack_cli._base_client.BaseClient._calculate_retry_timeout", _low_retry_timeout)
     @pytest.mark.respx(base_url=base_url)
     @pytest.mark.asyncio
     async def test_omit_retry_count_header(
-        self, async_client: AsyncLlamaStackClient, failures_before_success: int, respx_mock: MockRouter
+        self, async_client: AsyncLlamaStackCli, failures_before_success: int, respx_mock: MockRouter
     ) -> None:
         client = async_client.with_options(max_retries=4)
 
@@ -1590,27 +1609,20 @@ class TestAsyncLlamaStackClient:
                 return httpx.Response(500)
             return httpx.Response(200)
 
-        respx_mock.post("/v1/inference/chat-completion").mock(side_effect=retry_handler)
+        respx_mock.get("/store/inventory").mock(side_effect=retry_handler)
 
-        response = await client.inference.with_raw_response.chat_completion(
-            messages=[
-                {
-                    "content": "string",
-                    "role": "user",
-                }
-            ],
-            model_id="model_id",
-            extra_headers={"x-stainless-retry-count": Omit()},
+        response = await client.store.with_raw_response.list_inventory(
+            extra_headers={"x-stainless-retry-count": Omit()}
         )
 
         assert len(response.http_request.headers.get_list("x-stainless-retry-count")) == 0
 
     @pytest.mark.parametrize("failures_before_success", [0, 2, 4])
-    @mock.patch("llama_stack_client._base_client.BaseClient._calculate_retry_timeout", _low_retry_timeout)
+    @mock.patch("llama_stack_cli._base_client.BaseClient._calculate_retry_timeout", _low_retry_timeout)
     @pytest.mark.respx(base_url=base_url)
     @pytest.mark.asyncio
     async def test_overwrite_retry_count_header(
-        self, async_client: AsyncLlamaStackClient, failures_before_success: int, respx_mock: MockRouter
+        self, async_client: AsyncLlamaStackCli, failures_before_success: int, respx_mock: MockRouter
     ) -> None:
         client = async_client.with_options(max_retries=4)
 
@@ -1623,18 +1635,9 @@ class TestAsyncLlamaStackClient:
                 return httpx.Response(500)
             return httpx.Response(200)
 
-        respx_mock.post("/v1/inference/chat-completion").mock(side_effect=retry_handler)
+        respx_mock.get("/store/inventory").mock(side_effect=retry_handler)
 
-        response = await client.inference.with_raw_response.chat_completion(
-            messages=[
-                {
-                    "content": "string",
-                    "role": "user",
-                }
-            ],
-            model_id="model_id",
-            extra_headers={"x-stainless-retry-count": "42"},
-        )
+        response = await client.store.with_raw_response.list_inventory(extra_headers={"x-stainless-retry-count": "42"})
 
         assert response.http_request.headers.get("x-stainless-retry-count") == "42"
 
@@ -1649,8 +1652,8 @@ class TestAsyncLlamaStackClient:
         import nest_asyncio
         import threading
 
-        from llama_stack_client._utils import asyncify
-        from llama_stack_client._base_client import get_platform
+        from llama_stack_cli._utils import asyncify
+        from llama_stack_cli._base_client import get_platform
 
         async def test_main() -> None:
             result = await asyncify(get_platform)()

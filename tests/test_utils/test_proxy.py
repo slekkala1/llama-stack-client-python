@@ -2,7 +2,7 @@ import operator
 from typing import Any
 from typing_extensions import override
 
-from llama_stack_client._utils import LazyProxy
+from llama_stack_cli._utils import LazyProxy
 
 
 class RecursiveLazyProxy(LazyProxy[Any]):

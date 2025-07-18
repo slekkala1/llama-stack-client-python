@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from llama_stack_client._utils import required_args
+from llama_stack_cli._utils import required_args
 
 
 def test_too_many_positional_params() -> None:

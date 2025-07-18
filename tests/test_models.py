@@ -7,9 +7,9 @@ import pytest
 import pydantic
 from pydantic import Field
 
-from llama_stack_client._utils import PropertyInfo
-from llama_stack_client._compat import PYDANTIC_V2, parse_obj, model_dump, model_json
-from llama_stack_client._models import BaseModel, construct_type
+from llama_stack_cli._utils import PropertyInfo
+from llama_stack_cli._compat import PYDANTIC_V2, parse_obj, model_dump, model_json
+from llama_stack_cli._models import BaseModel, construct_type
 
 
 class BasicModel(BaseModel):
@@ -889,3 +889,48 @@ def test_discriminated_union_case() -> None:
     )
 
     assert isinstance(m, ModelB)
+
+
+def test_nested_discriminated_union() -> None:
+    class InnerType1(BaseModel):
+        type: Literal["type_1"]
+
+    class InnerModel(BaseModel):
+        inner_value: str
+
+    class InnerType2(BaseModel):
+        type: Literal["type_2"]
+        some_inner_model: InnerModel
+
+    class Type1(BaseModel):
+        base_type: Literal["base_type_1"]
+        value: Annotated[
+            Union[
+                InnerType1,
+                InnerType2,
+            ],
+            PropertyInfo(discriminator="type"),
+        ]
+
+    class Type2(BaseModel):
+        base_type: Literal["base_type_2"]
+
+    T = Annotated[
+        Union[
+            Type1,
+            Type2,
+        ],
+        PropertyInfo(discriminator="base_type"),
+    ]
+
+    model = construct_type(
+        type_=T,
+        value={
+            "base_type": "base_type_1",
+            "value": {
+                "type": "type_2",
+            },
+        },
+    )
+    assert isinstance(model, Type1)
+    assert isinstance(model.value, InnerType2)
