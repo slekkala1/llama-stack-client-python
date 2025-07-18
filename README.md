@@ -1,110 +1,115 @@
-# Llama Stack Client Python API library
+# Llama Stack Cli Python API library
 
-[![PyPI version](https://img.shields.io/pypi/v/llama_stack_client.svg)](https://pypi.org/project/llama_stack_client/) [![PyPI - Downloads](https://img.shields.io/pypi/dm/llama-stack-client)](https://pypi.org/project/llama-stack-client/)
-[![Discord](https://img.shields.io/discord/1257833999603335178)](https://discord.gg/llama-stack)
+<!-- prettier-ignore -->
+[![PyPI version](https://img.shields.io/pypi/v/llama_stack_cli.svg?label=pypi%20(stable))](https://pypi.org/project/llama_stack_cli/)
 
-The Llama Stack Client Python library provides convenient access to the Llama Stack Client REST API from any Python 3.7+
+The Llama Stack Cli Python library provides convenient access to the Llama Stack Cli REST API from any Python 3.8+
 application. The library includes type definitions for all request params and response fields,
 and offers both synchronous and asynchronous clients powered by [httpx](https://github.com/encode/httpx).
 
-It is generated with [Stainless](https://www.stainlessapi.com/).
+It is generated with [Stainless](https://www.stainless.com/).
 
 ## Documentation
 
-For starting up a Llama Stack server, please checkout our guides in our [llama-stack](https://github.com/meta-llama/llama-stack/blob/main/docs/resources/llama-stack-spec.html) repo.
-
-The REST API documentation can be found on our [llama-stack OpenAPI spec](https://github.com/meta-llama/llama-stack/blob/main/docs/resources/llama-stack-spec.html). The full API of this library can be found in [api.md](api.md).
-
-You can find more example apps with client SDKs to talk with the Llama Stack server in our [llama-stack-apps](https://github.com/meta-llama/llama-stack-apps/tree/main) repo.
+The full API of this library can be found in [api.md](api.md).
 
 ## Installation
 
 ```sh
-pip install llama-stack-client
+# install from this staging repo
+pip install git+ssh://git@github.com/stainless-sdks/llama-stack-cli-python.git
 ```
+
+> [!NOTE]
+> Once this package is [published to PyPI](https://www.stainless.com/docs/guides/publish), this will become: `pip install --pre llama_stack_cli`
 
 ## Usage
 
-The full API of this library can be found in [api.md](api.md). You may find basic client examples in our [llama-stack-apps](https://github.com/meta-llama/llama-stack-apps/tree/main) repo.
+The full API of this library can be found in [api.md](api.md).
 
 ```python
-from llama_stack_client import LlamaStackClient
+import os
+from llama_stack_cli import LlamaStackCli
 
-client = LlamaStackClient(
-    base_url=f"http://{host}:{port}",
+client = LlamaStackCli(
+    api_key=os.environ.get("PETSTORE_API_KEY"),  # This is the default and can be omitted
 )
 
-response = client.chat.completions.create(
-    messages=[{"role": "user", "content": "hello world, write me a 2 sentence poem about the moon"}],
-    model="meta-llama/Llama-3.2-3B-Instruct",
-    stream=False,
+order = client.store.order.create(
+    pet_id=1,
+    quantity=1,
+    status="placed",
 )
-print(response)
+print(order.id)
 ```
 
-After installing the `llama-stack-client` package, you can also use the [`llama-stack-client` CLI](https://github.com/meta-llama/llama-stack/tree/main/llama-stack-client) to interact with the Llama Stack server.
-```bash
-llama-stack-client inference chat-completion --message "hello, what model are you"
-```
-
-```python
-OpenAIChatCompletion(
-    id='AmivnS0iMv-mmEE4_A0DK1T',
-    choices=[
-        OpenAIChatCompletionChoice(
-            finish_reason='stop',
-            index=0,
-            message=OpenAIChatCompletionChoiceMessageOpenAIAssistantMessageParam(
-                role='assistant',
-                content="Hello! I am an AI designed by Meta AI, and my model is a type of recurrent neural network (RNN) called a transformer. My specific architecture is based on the BERT (Bidirectional Encoder Representations from Transformers) model, which is a pre-trained language model that has been fine-tuned for a variety of natural language processing tasks.\n\nHere are some key details about my model:\n\n* **Model type:** Transformer-based language model\n* **Architecture:** BERT (Bidirectional Encoder Representations from Transformers)\n* **Training data:** A massive corpus of text data, including but not limited to:\n\t+ Web pages\n\t+ Books\n\t+ Articles\n\t+ Forums\n\t+ Social media platforms\n* **Parameters:** My model has approximately 1.5 billion parameters, which allows me to understand and generate human-like language.\n* **Capabilities:** I can perform a wide range of tasks, including but not limited to:\n\t+ Answering questions\n\t+ Generating text\n\t+ Translating languages\n\t+ Summarizing content\n\t+ Offering suggestions and ideas\n\nI'm constantly learning and improving, so please bear with me if I make any mistakes or don't quite understand what you're asking. How can I assist you today?",
-                name=None,
-                tool_calls=None,
-                function_call=None
-            ),
-            logprobs=OpenAIChatCompletionChoiceLogprobs(content=None, refusal=None)
-        )
-    ],
-    created=1749825661,
-    model='Llama-3.3-70B-Instruct',
-    object='chat.completion',
-    system_fingerprint=None,
-    usage={
-        'completion_tokens': 258,
-        'prompt_tokens': 16,
-        'total_tokens': 274,
-        'completion_tokens_details': None,
-        'prompt_tokens_details': None
-    },
-    service_tier=None
-)
-```
+While you can provide an `api_key` keyword argument,
+we recommend using [python-dotenv](https://pypi.org/project/python-dotenv/)
+to add `PETSTORE_API_KEY="My API Key"` to your `.env` file
+so that your API Key is not stored in source control.
 
 ## Async usage
 
-Simply import `AsyncLlamaStackClient` instead of `LlamaStackClient` and use `await` with each API call:
+Simply import `AsyncLlamaStackCli` instead of `LlamaStackCli` and use `await` with each API call:
 
 ```python
+import os
 import asyncio
-from llama_stack_client import AsyncLlamaStackClient
+from llama_stack_cli import AsyncLlamaStackCli
 
-client = AsyncLlamaStackClient(
-    # defaults to "production".
-    environment="sandbox",
+client = AsyncLlamaStackCli(
+    api_key=os.environ.get("PETSTORE_API_KEY"),  # This is the default and can be omitted
 )
 
 
 async def main() -> None:
-    session = await client.agents.sessions.create(
-        agent_id="agent_id",
-        session_name="session_name",
+    order = await client.store.order.create(
+        pet_id=1,
+        quantity=1,
+        status="placed",
     )
-    print(session.session_id)
+    print(order.id)
 
 
 asyncio.run(main())
 ```
 
 Functionality between the synchronous and asynchronous clients is otherwise identical.
+
+### With aiohttp
+
+By default, the async client uses `httpx` for HTTP requests. However, for improved concurrency performance you may also use `aiohttp` as the HTTP backend.
+
+You can enable this by installing `aiohttp`:
+
+```sh
+# install from this staging repo
+pip install 'llama_stack_cli[aiohttp] @ git+ssh://git@github.com/stainless-sdks/llama-stack-cli-python.git'
+```
+
+Then you can enable it by instantiating the client with `http_client=DefaultAioHttpClient()`:
+
+```python
+import asyncio
+from llama_stack_cli import DefaultAioHttpClient
+from llama_stack_cli import AsyncLlamaStackCli
+
+
+async def main() -> None:
+    async with AsyncLlamaStackCli(
+        api_key="My API Key",
+        http_client=DefaultAioHttpClient(),
+    ) as client:
+        order = await client.store.order.create(
+            pet_id=1,
+            quantity=1,
+            status="placed",
+        )
+        print(order.id)
+
+
+asyncio.run(main())
+```
 
 ## Using types
 
@@ -115,38 +120,52 @@ Nested request parameters are [TypedDicts](https://docs.python.org/3/library/typ
 
 Typed requests and responses provide autocomplete and documentation within your editor. If you would like to see type errors in VS Code to help catch bugs earlier, set `python.analysis.typeCheckingMode` to `basic`.
 
-## Handling errors
+## Nested params
 
-When the library is unable to connect to the API (for example, due to network connection problems or a timeout), a subclass of `llama_stack_client.APIConnectionError` is raised.
-
-When the API returns a non-success status code (that is, 4xx or 5xx
-response), a subclass of `llama_stack_client.APIStatusError` is raised, containing `status_code` and `response` properties.
-
-All errors inherit from `llama_stack_client.APIError`.
+Nested parameters are dictionaries, typed using `TypedDict`, for example:
 
 ```python
-import llama_stack_client
-from llama_stack_client import LlamaStackClient
+from llama_stack_cli import LlamaStackCli
 
-client = LlamaStackClient()
+client = LlamaStackCli()
+
+pet = client.pet.create(
+    name="doggie",
+    photo_urls=["string"],
+    category={},
+)
+print(pet.category)
+```
+
+## Handling errors
+
+When the library is unable to connect to the API (for example, due to network connection problems or a timeout), a subclass of `llama_stack_cli.APIConnectionError` is raised.
+
+When the API returns a non-success status code (that is, 4xx or 5xx
+response), a subclass of `llama_stack_cli.APIStatusError` is raised, containing `status_code` and `response` properties.
+
+All errors inherit from `llama_stack_cli.APIError`.
+
+```python
+import llama_stack_cli
+from llama_stack_cli import LlamaStackCli
+
+client = LlamaStackCli()
 
 try:
-    client.agents.sessions.create(
-        agent_id="agent_id",
-        session_name="session_name",
-    )
-except llama_stack_client.APIConnectionError as e:
+    client.store.list_inventory()
+except llama_stack_cli.APIConnectionError as e:
     print("The server could not be reached")
     print(e.__cause__)  # an underlying Exception, likely raised within httpx.
-except llama_stack_client.RateLimitError as e:
+except llama_stack_cli.RateLimitError as e:
     print("A 429 status code was received; we should back off a bit.")
-except llama_stack_client.APIStatusError as e:
+except llama_stack_cli.APIStatusError as e:
     print("Another non-200-range status code was received")
     print(e.status_code)
     print(e.response)
 ```
 
-Error codes are as followed:
+Error codes are as follows:
 
 | Status Code | Error Type                 |
 | ----------- | -------------------------- |
@@ -168,45 +187,39 @@ Connection errors (for example, due to a network connectivity problem), 408 Requ
 You can use the `max_retries` option to configure or disable retry settings:
 
 ```python
-from llama_stack_client import LlamaStackClient
+from llama_stack_cli import LlamaStackCli
 
 # Configure the default for all requests:
-client = LlamaStackClient(
+client = LlamaStackCli(
     # default is 2
     max_retries=0,
 )
 
 # Or, configure per-request:
-client.with_options(max_retries=5).agents.sessions.create(
-    agent_id="agent_id",
-    session_name="session_name",
-)
+client.with_options(max_retries=5).store.list_inventory()
 ```
 
 ### Timeouts
 
 By default requests time out after 1 minute. You can configure this with a `timeout` option,
-which accepts a float or an [`httpx.Timeout`](https://www.python-httpx.org/advanced/#fine-tuning-the-configuration) object:
+which accepts a float or an [`httpx.Timeout`](https://www.python-httpx.org/advanced/timeouts/#fine-tuning-the-configuration) object:
 
 ```python
-from llama_stack_client import LlamaStackClient
+from llama_stack_cli import LlamaStackCli
 
 # Configure the default for all requests:
-client = LlamaStackClient(
+client = LlamaStackCli(
     # 20 seconds (default is 1 minute)
     timeout=20.0,
 )
 
 # More granular control:
-client = LlamaStackClient(
+client = LlamaStackCli(
     timeout=httpx.Timeout(60.0, read=5.0, write=10.0, connect=2.0),
 )
 
 # Override per-request:
-client.with_options(timeout=5.0).agents.sessions.create(
-    agent_id="agent_id",
-    session_name="session_name",
-)
+client.with_options(timeout=5.0).store.list_inventory()
 ```
 
 On timeout, an `APITimeoutError` is thrown.
@@ -219,11 +232,13 @@ Note that requests that time out are [retried twice by default](#retries).
 
 We use the standard library [`logging`](https://docs.python.org/3/library/logging.html) module.
 
-You can enable logging by setting the environment variable `LLAMA_STACK_CLIENT_LOG` to `debug`.
+You can enable logging by setting the environment variable `LLAMA_STACK_CLI_LOG` to `info`.
 
 ```shell
-$ export LLAMA_STACK_CLIENT_LOG=debug
+$ export LLAMA_STACK_CLI_LOG=info
 ```
+
+Or to `debug` for more verbose logging.
 
 ### How to tell whether `None` means `null` or missing
 
@@ -242,22 +257,19 @@ if response.my_field is None:
 The "raw" Response object can be accessed by prefixing `.with_raw_response.` to any HTTP method call, e.g.,
 
 ```py
-from llama_stack_client import LlamaStackClient
+from llama_stack_cli import LlamaStackCli
 
-client = LlamaStackClient()
-response = client.agents.sessions.with_raw_response.create(
-    agent_id="agent_id",
-    session_name="session_name",
-)
+client = LlamaStackCli()
+response = client.store.with_raw_response.list_inventory()
 print(response.headers.get('X-My-Header'))
 
-session = response.parse()  # get the object that `agents.sessions.create()` would have returned
-print(session.session_id)
+store = response.parse()  # get the object that `store.list_inventory()` would have returned
+print(store)
 ```
 
-These methods return an [`APIResponse`](https://github.com/meta-llama/llama-stack-python/tree/main/src/llama_stack_client/_response.py) object.
+These methods return an [`APIResponse`](https://github.com/stainless-sdks/llama-stack-cli-python/tree/main/src/llama_stack_cli/_response.py) object.
 
-The async client returns an [`AsyncAPIResponse`](https://github.com/meta-llama/llama-stack-python/tree/main/src/llama_stack_client/_response.py) with the same structure, the only difference being `await`able methods for reading the response content.
+The async client returns an [`AsyncAPIResponse`](https://github.com/stainless-sdks/llama-stack-cli-python/tree/main/src/llama_stack_cli/_response.py) with the same structure, the only difference being `await`able methods for reading the response content.
 
 #### `.with_streaming_response`
 
@@ -266,10 +278,7 @@ The above interface eagerly reads the full response body when you make the reque
 To stream the response body, use `.with_streaming_response` instead, which requires a context manager and only reads the response body once you call `.read()`, `.text()`, `.json()`, `.iter_bytes()`, `.iter_text()`, `.iter_lines()` or `.parse()`. In the async client, these are async methods.
 
 ```python
-with client.agents.sessions.with_streaming_response.create(
-    agent_id="agent_id",
-    session_name="session_name",
-) as response:
+with client.store.with_streaming_response.list_inventory() as response:
     print(response.headers.get("X-My-Header"))
 
     for line in response.iter_lines():
@@ -287,8 +296,7 @@ If you need to access undocumented endpoints, params, or response properties, th
 #### Undocumented endpoints
 
 To make requests to undocumented endpoints, you can make requests using `client.get`, `client.post`, and other
-http verbs. Options on the client will be respected (such as retries) will be respected when making this
-request.
+http verbs. Options on the client will be respected (such as retries) when making this request.
 
 ```py
 import httpx
@@ -317,18 +325,19 @@ can also get all the extra fields on the Pydantic model as a dict with
 
 You can directly override the [httpx client](https://www.python-httpx.org/api/#client) to customize it for your use case, including:
 
-- Support for proxies
-- Custom transports
+- Support for [proxies](https://www.python-httpx.org/advanced/proxies/)
+- Custom [transports](https://www.python-httpx.org/advanced/transports/)
 - Additional [advanced](https://www.python-httpx.org/advanced/clients/) functionality
 
 ```python
-from llama_stack_client import LlamaStackClient, DefaultHttpxClient
+import httpx
+from llama_stack_cli import LlamaStackCli, DefaultHttpxClient
 
-client = LlamaStackClient(
-    # Or use the `LLAMA_STACK_CLIENT_BASE_URL` env var
+client = LlamaStackCli(
+    # Or use the `LLAMA_STACK_CLI_BASE_URL` env var
     base_url="http://my.test.server.example.com:8083",
     http_client=DefaultHttpxClient(
-        proxies="http://my.test.proxy.example.com",
+        proxy="http://my.test.proxy.example.com",
         transport=httpx.HTTPTransport(local_address="0.0.0.0"),
     ),
 )
@@ -344,17 +353,27 @@ client.with_options(http_client=DefaultHttpxClient(...))
 
 By default the library closes underlying HTTP connections whenever the client is [garbage collected](https://docs.python.org/3/reference/datamodel.html#object.__del__). You can manually close the client using the `.close()` method if desired, or with a context manager that closes when exiting.
 
+```py
+from llama_stack_cli import LlamaStackCli
+
+with LlamaStackCli() as client:
+  # make requests here
+  ...
+
+# HTTP client is now closed
+```
+
 ## Versioning
 
 This package generally follows [SemVer](https://semver.org/spec/v2.0.0.html) conventions, though certain backwards-incompatible changes may be released as minor versions:
 
 1. Changes that only affect static types, without breaking runtime behavior.
-2. Changes to library internals which are technically public but not intended or documented for external use. _(Please open a GitHub issue to let us know if you are relying on such internals)_.
+2. Changes to library internals which are technically public but not intended or documented for external use. _(Please open a GitHub issue to let us know if you are relying on such internals.)_
 3. Changes that we do not expect to impact the vast majority of users in practice.
 
 We take backwards-compatibility seriously and work hard to ensure you can rely on a smooth upgrade experience.
 
-We are keen for your feedback; please open an [issue](https://www.github.com/meta-llama/llama-stack-python/issues) with questions, bugs, or suggestions.
+We are keen for your feedback; please open an [issue](https://www.github.com/stainless-sdks/llama-stack-cli-python/issues) with questions, bugs, or suggestions.
 
 ### Determining the installed version
 
@@ -363,10 +382,14 @@ If you've upgraded to the latest version but aren't seeing any new features you 
 You can determine the version that is being used at runtime with:
 
 ```py
-import llama_stack_client
-print(llama_stack_client.__version__)
+import llama_stack_cli
+print(llama_stack_cli.__version__)
 ```
 
 ## Requirements
 
-Python 3.10 or higher.
+Python 3.8 or higher.
+
+## Contributing
+
+See [the contributing documentation](./CONTRIBUTING.md).
